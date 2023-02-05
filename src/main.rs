@@ -18,8 +18,8 @@ use clap::Parser;
 use hex::FromHexError;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use rocksdb::{
-    properties::ESTIMATE_NUM_KEYS, BlockBasedOptions, DBCompressionType, Options, SliceTransform,
-    DB,
+    properties::ESTIMATE_NUM_KEYS, BlockBasedOptions, Cache, DBCompressionType, Options,
+    SliceTransform, DB,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -37,6 +37,8 @@ struct Opt {
     source: Vec<PathBuf>,
     #[arg(long)]
     bind: Option<SocketAddr>,
+    #[arg(long, default_value = "268435456")]
+    cache_bytes: usize,
 }
 
 struct Database {
@@ -44,8 +46,13 @@ struct Database {
 }
 
 impl Database {
-    fn open(path: impl AsRef<Path>) -> Result<Database, rocksdb::Error> {
+    fn open(opt: &Opt) -> Result<Database, rocksdb::Error> {
+        let cache = Cache::new_lru_cache(opt.cache_bytes)?;
+
         let mut table_opts = BlockBasedOptions::default();
+        table_opts.set_block_cache(&cache);
+        table_opts.set_cache_index_and_filter_blocks(true);
+        table_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
         table_opts.set_hybrid_ribbon_filter(10.0, 1);
         table_opts.set_whole_key_filtering(true);
         table_opts.set_format_version(5);
@@ -60,7 +67,7 @@ impl Database {
         db_opts.set_level_compaction_dynamic_level_bytes(false);
         db_opts.set_prefix_extractor(SliceTransform::create_noop());
 
-        let inner = DB::open(&db_opts, path)?;
+        let inner = DB::open(&db_opts, &opt.db)?;
 
         Ok(Database { inner })
     }
@@ -106,10 +113,10 @@ impl FromStr for PasswordHash {
 async fn main() {
     let opt = Opt::parse();
 
-    let db: &'static Database = Box::leak(Box::new(Database::open(opt.db).expect("open database")));
+    let db: &'static Database = Box::leak(Box::new(Database::open(&opt).expect("open database")));
 
     for source in opt.source {
-        load(db, source).expect("open source");
+        load(db, &source).expect("open source");
     }
 
     if let Some(ref bind) = opt.bind {
@@ -127,10 +134,10 @@ async fn main() {
     }
 }
 
-fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
+fn load(db: &Database, path: &Path) -> io::Result<()> {
     let file = File::open(path)?;
 
-    let progress = ProgressBar::with_draw_target(
+    let file = ProgressBar::with_draw_target(
         Some(file.metadata()?.len()),
         ProgressDrawTarget::stdout_with_hz(4),
     )
@@ -140,15 +147,14 @@ fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
         )
         .unwrap(),
     )
-    .with_prefix(format!("{path:?}"));
+    .with_prefix(format!("{path:?}"))
+    .wrap_read(file);
 
-    let file = progres.wrap_read(file);
-
-    let uncompressed: Box<dyn io::Read> = if arg.ends_with(".zst") {
-        log::info!("Loading compressed {:?} ...", source);
+    let uncompressed: Box<dyn io::Read> = if path.ends_with(".zst") {
+        log::info!("Loading compressed {:?} ...", path);
         Box::new(zstd::Decoder::new(file)?)
     } else {
-        log::info!("Loading plain text {:?} ...", source);
+        log::info!("Loading plain text {:?} ...", path);
         Box::new(file)
     };
 
