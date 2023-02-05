@@ -15,7 +15,7 @@ jobs:
         with:
           command: build
           args: --release
-      - uses: actions-rs/upload-artifact@v3
+      - uses: actions/upload-artifact@v3
         with:
           name: lila-pwned
           path: target/release/lila-pwned
