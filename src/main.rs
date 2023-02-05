@@ -36,6 +36,8 @@ struct Opt {
     #[arg(long)]
     source: Vec<PathBuf>,
     #[arg(long)]
+    compact: bool,
+    #[arg(long)]
     bind: Option<SocketAddr>,
     #[arg(long, default_value = "268435456")]
     cache_bytes: usize,
@@ -89,6 +91,10 @@ impl Database {
             .property_int_value(ESTIMATE_NUM_KEYS)?
             .unwrap_or(0))
     }
+
+    fn compact(&self) -> () {
+        self.inner.compact_range(None::<&[u8]>, None::<&[u8]>);
+    }
 }
 
 #[derive(Debug, Error)]
@@ -117,6 +123,11 @@ async fn main() {
 
     for source in opt.source {
         load(db, &source).expect("open source");
+    }
+
+    if opt.compact {
+        log::info!("Compacting ...");
+        db.compact();
     }
 
     if let Some(ref bind) = opt.bind {
