@@ -117,6 +117,8 @@ impl FromStr for PasswordHash {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     let opt = Opt::parse();
 
     let db: &'static Database = Box::leak(Box::new(Database::open(&opt).expect("open database")));
