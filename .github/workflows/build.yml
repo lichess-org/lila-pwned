@@ -1,10 +1,10 @@
-name: Test
+name: Build
 
 on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
@@ -13,4 +13,9 @@ jobs:
           profile: minimal
       - uses: actions-rs/cargo@v1
         with:
-          command: test
+          command: build
+          args: --release
+      - uses: actions-rs/upload-artifact@v3
+        with:
+          name: lila-pwned
+          path: target/release/lila-pwned
