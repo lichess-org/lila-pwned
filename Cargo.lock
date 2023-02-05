@@ -638,6 +638,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
+ "hex",
  "log",
  "rocksdb",
  "serde",

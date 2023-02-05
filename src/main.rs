@@ -15,6 +15,7 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
+use hex::FromHexError;
 use rocksdb::{BlockBasedOptions, DBCompressionType, Options, SliceTransform, DB};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -61,50 +62,50 @@ impl Database {
     }
 
     fn set(&self, hash: PasswordHash, n: u64) -> Result<(), rocksdb::Error> {
-        self.inner.put(hash.as_bytes(), n.to_be_bytes())
+        self.inner.put(hash.bytes, n.to_be_bytes())
     }
 
     fn get(&self, hash: PasswordHash) -> Result<u64, rocksdb::Error> {
         Ok(self
             .inner
-            .get(hash.as_bytes())?
+            .get(hash.bytes)?
             .map_or(0, |bytes| bytes.try_into().map_or(0, u64::from_be_bytes)))
     }
 }
 
 #[derive(Debug, Error)]
-#[error("invalid password hash")]
-struct InvalidPasswordHash;
+#[error("Invalid password hash: {0}")]
+struct InvalidPasswordHash(#[from] FromHexError);
 
-struct PasswordHash {}
+struct PasswordHash {
+    bytes: [u8; 20],
+}
 
 impl FromStr for PasswordHash {
     type Err = InvalidPasswordHash;
 
     fn from_str(s: &str) -> Result<PasswordHash, InvalidPasswordHash> {
-        todo!()
-    }
-}
-
-impl PasswordHash {
-    fn as_bytes(&self) -> &[u8] {
-        todo!()
+        let mut bytes = [0; 20];
+        hex::decode_to_slice(s, &mut bytes[..])?;
+        Ok(PasswordHash { bytes })
     }
 }
 
 #[tokio::main]
-fn main() {
+async fn main() {
     let opt = Opt::parse();
 
     let db: &'static Database = Box::leak(Box::new(Database::open(opt.db).expect("open database")));
 
     for source in opt.source {
-        log::info!("loading {:?} ...", source);
-        load(&db, source).expect("open source");
+        log::info!("Loading {:?} ...", source);
+        load(db, source).expect("open source");
     }
 
-    if let Some(bind) = opt.bind {
-        let app = Router::new().route("/:hash", get(query)).with_state(db);
+    if let Some(ref bind) = opt.bind {
+        log::info!("Serving at {:?} ...", bind);
+
+        let app = Router::new().route("/", get(query)).with_state(db);
 
         axum::Server::bind(bind)
             .serve(app.into_make_service())
@@ -120,7 +121,7 @@ fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
         let (hash, n) = match line.split_once(':') {
             Some(parts) => parts,
             None => {
-                log::warn!("unexpected line format: {line}");
+                log::warn!("Unexpected line format: {line}");
                 continue;
             }
         };
@@ -140,7 +141,7 @@ fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
             }
         };
 
-        db.set(hash, n);
+        db.set(hash, n).expect("db set");
     }
 
     Ok(())
@@ -150,7 +151,7 @@ fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
 #[derive(Deserialize)]
 struct Params {
     #[serde_as(as = "DisplayFromStr")]
-    hash: PasswordHash,
+    sha1: PasswordHash,
 }
 
 #[derive(Serialize)]
@@ -160,6 +161,6 @@ struct Response {
 
 async fn query(State(db): State<&'static Database>, Query(query): Query<Params>) -> Json<Response> {
     Json(Response {
-        n: db.get(query.hash).expect("db get"),
+        n: db.get(query.sha1).expect("db get"),
     })
 }
