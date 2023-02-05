@@ -48,7 +48,7 @@ curl http://localhost:1337/status
 * `200 OK`
 
   ```
-  pwned count=500000000
+  pwned count=847223402u
   ```
 
 License
