@@ -1,0 +1,21 @@
+[package]
+name = "lila-pwned"
+version = "0.1.0"
+publish = false
+description = "Query https://haveibeenpwned.com/ database dumps"
+repository = "https://github.com/lichess-org/lila-pwned"
+readme = "README.md"
+license = "AGPL-3.0+"
+authors = ["Niklas Fiekas <niklas.fiekas@backscattering.de>"]
+keywords = ["password", "lichess"]
+edition = "2021"
+
+[dependencies]
+axum = "0.6"
+clap = { version = "4", features = ["derive", "deprecated"] }
+log = "0.4"
+rocksdb = { version = "0.19", features = ["lz4", "zstd", "jemalloc"], default-features = false, git = "https://github.com/rust-rocksdb/rust-rocksdb" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tikv-jemallocator = "0.5" # matching rocksdb
+tokio = { version = "1", features = ["full"] }
