@@ -5,18 +5,19 @@ use std::{
     io,
     io::{BufRead, BufReader},
     net::SocketAddr,
-    path::{Path as FsPath, PathBuf},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
 use axum::{
-    extract::{Path, State},
+    extract::{Query, State},
     routing::get,
     Json, Router,
 };
 use clap::Parser;
 use rocksdb::{BlockBasedOptions, DBCompressionType, Options, SliceTransform, DB};
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use thiserror::Error;
 use tikv_jemallocator::Jemalloc;
 
@@ -38,7 +39,7 @@ struct Database {
 }
 
 impl Database {
-    fn open(path: impl AsRef<FsPath>) -> Result<Database, rocksdb::Error> {
+    fn open(path: impl AsRef<Path>) -> Result<Database, rocksdb::Error> {
         let mut table_opts = BlockBasedOptions::default();
         table_opts.set_hybrid_ribbon_filter(10.0, 1);
         table_opts.set_whole_key_filtering(true);
@@ -112,7 +113,7 @@ fn main() {
     }
 }
 
-fn load(db: &Database, path: impl AsRef<FsPath>) -> io::Result<()> {
+fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
     for line in BufReader::new(File::open(path)?).lines() {
         let line = line?;
 
@@ -145,8 +146,10 @@ fn load(db: &Database, path: impl AsRef<FsPath>) -> io::Result<()> {
     Ok(())
 }
 
+#[serde_as]
 #[derive(Deserialize)]
-struct Query {
+struct Params {
+    #[serde_as(as = "DisplayFromStr")]
     hash: PasswordHash,
 }
 
@@ -155,7 +158,7 @@ struct Response {
     n: u64,
 }
 
-async fn query(State(db): State<&'static Database>, Path(query): Path<Query>) -> Json<Response> {
+async fn query(State(db): State<&'static Database>, Query(query): Query<Params>) -> Json<Response> {
     Json(Response {
         n: db.get(query.hash).expect("db get"),
     })
