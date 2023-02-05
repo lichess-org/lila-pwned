@@ -150,7 +150,7 @@ fn load(db: &Database, path: &Path) -> io::Result<()> {
     .with_prefix(format!("{path:?}"))
     .wrap_read(file);
 
-    let uncompressed: Box<dyn io::Read> = if path.ends_with(".zst") {
+    let uncompressed: Box<dyn io::Read> = if path.extension().map_or(false, |ext| ext == "zst") {
         log::info!("Loading compressed {:?} ...", path);
         Box::new(zstd::Decoder::new(file)?)
     } else {
