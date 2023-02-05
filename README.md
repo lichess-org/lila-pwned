@@ -12,6 +12,8 @@ Import a database dump:
 cargo run --release -- --source pwned-passwords-sha1-ordered-by-hash-v8.txt
 ```
 
+For local testing, `test.txt` contains the single password `test`.
+
 Serve:
 
 ```
