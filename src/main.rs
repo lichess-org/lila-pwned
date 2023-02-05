@@ -16,7 +16,10 @@ use axum::{
 };
 use clap::Parser;
 use hex::FromHexError;
-use rocksdb::{BlockBasedOptions, DBCompressionType, Options, SliceTransform, DB};
+use rocksdb::{
+    properties::ESTIMATE_NUM_KEYS, BlockBasedOptions, DBCompressionType, Options, SliceTransform,
+    DB,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use thiserror::Error;
@@ -71,6 +74,10 @@ impl Database {
             .get(hash.bytes)?
             .map_or(0, |bytes| bytes.try_into().map_or(0, u64::from_be_bytes)))
     }
+
+    fn estimate_count(&self) -> Result<u64, rocksdb::Error> {
+        Ok(self.inner.property_int_value(ESTIMATE_NUM_KEYS)?.unwrap_or(0))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -105,7 +112,10 @@ async fn main() {
     if let Some(ref bind) = opt.bind {
         log::info!("Serving at {:?} ...", bind);
 
-        let app = Router::new().route("/", get(query)).with_state(db);
+        let app = Router::new()
+            .route("/status", get(status))
+            .route("/", get(query))
+            .with_state(db);
 
         axum::Server::bind(bind)
             .serve(app.into_make_service())
@@ -145,6 +155,11 @@ fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+async fn status(State(db): State<&'static Database>) -> String {
+    let count = db.estimate_count().expect("estimate count");
+    format!("pwned count={count}u")
 }
 
 #[serde_as]

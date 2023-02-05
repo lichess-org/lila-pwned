@@ -39,6 +39,18 @@ sha1 | string | Hash of the password to look up
   }
   ```
 
+### `GET /status`
+
+```
+curl http://localhost:1337/status
+```
+
+* `200 OK`
+
+  ```
+  pwned count=500000000
+  ```
+
 License
 -------
 
