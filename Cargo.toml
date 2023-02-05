@@ -14,6 +14,7 @@ edition = "2021"
 axum = "0.6"
 clap = { version = "4", features = ["derive", "deprecated"] }
 hex = "0.4"
+indicatif = "0.17"
 log = "0.4"
 rocksdb = { version = "0.19", features = ["lz4", "zstd", "jemalloc"], default-features = false, git = "https://github.com/rust-rocksdb/rust-rocksdb" }
 serde = { version = "1", features = ["derive"] }
@@ -21,3 +22,4 @@ serde_with = "2.2.0"
 thiserror = "1"
 tikv-jemallocator = "0.5" # matching rocksdb
 tokio = { version = "1", features = ["full"] }
+zstd = "0.12"

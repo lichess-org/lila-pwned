@@ -16,6 +16,7 @@ use axum::{
 };
 use clap::Parser;
 use hex::FromHexError;
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use rocksdb::{
     properties::ESTIMATE_NUM_KEYS, BlockBasedOptions, DBCompressionType, Options, SliceTransform,
     DB,
@@ -76,7 +77,10 @@ impl Database {
     }
 
     fn estimate_count(&self) -> Result<u64, rocksdb::Error> {
-        Ok(self.inner.property_int_value(ESTIMATE_NUM_KEYS)?.unwrap_or(0))
+        Ok(self
+            .inner
+            .property_int_value(ESTIMATE_NUM_KEYS)?
+            .unwrap_or(0))
     }
 }
 
@@ -105,7 +109,6 @@ async fn main() {
     let db: &'static Database = Box::leak(Box::new(Database::open(opt.db).expect("open database")));
 
     for source in opt.source {
-        log::info!("Loading {:?} ...", source);
         load(db, source).expect("open source");
     }
 
@@ -125,7 +128,31 @@ async fn main() {
 }
 
 fn load(db: &Database, path: impl AsRef<Path>) -> io::Result<()> {
-    for line in BufReader::new(File::open(path)?).lines() {
+    let file = File::open(path)?;
+
+    let progress = ProgressBar::with_draw_target(
+        Some(file.metadata()?.len()),
+        ProgressDrawTarget::stdout_with_hz(4),
+    )
+    .with_style(
+        ProgressStyle::with_template(
+            "{spinner} {prefix} {msg} {wide_bar} {bytes_per_sec:>14} {eta:>7}",
+        )
+        .unwrap(),
+    )
+    .with_prefix(format!("{path:?}"));
+
+    let file = progres.wrap_read(file);
+
+    let uncompressed: Box<dyn io::Read> = if arg.ends_with(".zst") {
+        log::info!("Loading compressed {:?} ...", source);
+        Box::new(zstd::Decoder::new(file)?)
+    } else {
+        log::info!("Loading plain text {:?} ...", source);
+        Box::new(file)
+    };
+
+    for line in BufReader::new(uncompressed).lines() {
         let line = line?;
 
         let (hash, n) = match line.split_once(':') {
