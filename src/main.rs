@@ -74,15 +74,15 @@ impl Database {
         Ok(Database { inner })
     }
 
-    fn set(&self, hash: PasswordHash, n: u64) -> Result<(), rocksdb::Error> {
+    fn set(&self, hash: PasswordHash, n: u32) -> Result<(), rocksdb::Error> {
         self.inner.put(hash.bytes, n.to_be_bytes())
     }
 
-    fn get(&self, hash: PasswordHash) -> Result<u64, rocksdb::Error> {
+    fn get(&self, hash: PasswordHash) -> Result<u32, rocksdb::Error> {
         Ok(self
             .inner
             .get(hash.bytes)?
-            .map_or(0, |bytes| bytes.try_into().map_or(0, u64::from_be_bytes)))
+            .map_or(0, |bytes| bytes.try_into().map_or(0, u32::from_be_bytes)))
     }
 
     fn estimate_count(&self) -> Result<u64, rocksdb::Error> {
@@ -217,7 +217,7 @@ struct Params {
 
 #[derive(Serialize)]
 struct Response {
-    n: u64,
+    n: u32,
 }
 
 async fn query(State(db): State<&'static Database>, Query(query): Query<Params>) -> Json<Response> {
