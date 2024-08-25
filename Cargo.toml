@@ -14,16 +14,16 @@ edition = "2021"
 strip = true
 
 [dependencies]
-axum = "0.6"
+axum = "0.7"
 clap = { version = "4", features = ["derive", "deprecated"] }
-env_logger = "0.10"
+env_logger = "0.11"
 hex = "0.4"
 indicatif = "0.17"
 log = "0.4"
-rocksdb = { version = "0.19", features = ["lz4", "zstd", "jemalloc"], default-features = false, git = "https://github.com/rust-rocksdb/rust-rocksdb" }
+rocksdb = { version = "0.22", features = ["lz4", "zstd", "jemalloc"], default-features = false }
 serde = { version = "1", features = ["derive"] }
-serde_with = "2"
+serde_with = "3"
 thiserror = "1"
 tikv-jemallocator = "0.5" # matching rocksdb
 tokio = { version = "1", features = ["full"] }
-zstd = "0.12"
+zstd = "0.13"

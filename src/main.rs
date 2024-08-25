@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use thiserror::Error;
 use tikv_jemallocator::Jemalloc;
+use tokio::net::TcpListener;
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -49,7 +50,7 @@ struct Database {
 
 impl Database {
     fn open(opt: &Opt) -> Result<Database, rocksdb::Error> {
-        let cache = Cache::new_lru_cache(opt.cache_bytes)?;
+        let cache = Cache::new_lru_cache(opt.cache_bytes);
 
         let mut table_opts = BlockBasedOptions::default();
         table_opts.set_block_cache(&cache);
@@ -140,10 +141,8 @@ async fn main() {
             .route("/", get(query))
             .with_state(db);
 
-        axum::Server::bind(bind)
-            .serve(app.into_make_service())
-            .await
-            .expect("bind");
+        let listener = TcpListener::bind(bind).await.expect("bind");
+        axum::serve(listener, app).await.expect("serve");
     }
 }
 
