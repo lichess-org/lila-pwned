@@ -93,7 +93,7 @@ impl Database {
             .unwrap_or(0))
     }
 
-    fn compact(&self) -> () {
+    fn compact(&self) {
         self.inner.compact_range(None::<&[u8]>, None::<&[u8]>);
     }
 }
