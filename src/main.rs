@@ -7,6 +7,7 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
+    time::Duration,
 };
 
 use axum::{
@@ -25,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use thiserror::Error;
 use tikv_jemallocator::Jemalloc;
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, time::sleep};
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -38,6 +39,8 @@ struct Opt {
     source: Vec<PathBuf>,
     #[arg(long)]
     compact: bool,
+    #[arg(long)]
+    upstream_update: bool,
     #[arg(long)]
     bind: Option<SocketAddr>,
     #[arg(long, default_value = "268435456")]
@@ -117,6 +120,7 @@ impl FromStr for PasswordHash {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 struct PasswordHashPrefix(u32);
 
 impl PasswordHashPrefix {
@@ -143,6 +147,10 @@ async fn main() {
     if opt.compact {
         log::info!("Compacting ...");
         db.compact();
+    }
+
+    if opt.upstream_update {
+        tokio::spawn(upstream_update_forever(db));
     }
 
     if let Some(ref bind) = opt.bind {
@@ -208,37 +216,103 @@ fn load(db: &Database, path: &Path) -> io::Result<()> {
             }
         };
 
-        db.set(hash, n).expect("db set");
+        db.set(hash, n).expect("db set for load");
     }
 
     Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("upstream error: {0}")]
 enum UpstreamError {
-    UnexpectedContent,
+    #[error("unexpected line: {0:?}")]
+    UnexpectedLine(String),
+    ReqwestError(#[from] reqwest::Error),
 }
 
 fn parse_upstream_range(
     prefix: PasswordHashPrefix,
     body: &str,
-    out: &mut Vec<(PasswordHash, u64)>,
-) -> Result<(), UpstreamError> {
+) -> Result<Vec<(PasswordHash, u32)>, UpstreamError> {
+    let mut out = Vec::with_capacity(body.len() / 35);
     for line in body.lines() {
         let (suffix, n) = line
             .split_once(':')
-            .ok_or(UpstreamError::UnexpectedContent)?;
+            .ok_or(UpstreamError::UnexpectedLine(line.to_owned()))?;
 
         let mut hex_hash = prefix.to_hex_string();
         hex_hash.push_str(suffix);
 
         let hash = hex_hash
             .parse()
-            .map_err(|_| UpstreamError::UnexpectedContent)?;
-        let n: u64 = n.parse().map_err(|_| UpstreamError::UnexpectedContent)?;
+            .map_err(|_| UpstreamError::UnexpectedLine(line.to_owned()))?;
+        let n = n
+            .parse()
+            .map_err(|_| UpstreamError::UnexpectedLine(line.to_owned()))?;
         out.push((hash, n));
     }
+    Ok(out)
+}
+
+async fn upstream_update_range(
+    db: &Database,
+    client: &reqwest::Client,
+    prefix: PasswordHashPrefix,
+) -> Result<(), UpstreamError> {
+    let body = client
+        .get(format!(
+            "https://api.pwnedpasswords.com/range/{}",
+            prefix.to_hex_string()
+        ))
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let out = parse_upstream_range(prefix, &body)?;
+    log::debug!(
+        "Upstream update: Received {} records for prefix {}",
+        out.len(),
+        prefix.to_hex_string()
+    );
+
+    for (hash, n) in parse_upstream_range(prefix, &body)? {
+        if n > 0 {
+            db.set(hash, n).expect("db set for upstream update");
+        }
+    }
+
     Ok(())
+}
+
+async fn upstream_update_forever(db: &Database) {
+    let client = reqwest::Client::builder()
+        .user_agent("lila-pwned")
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("client");
+
+    loop {
+        log::info!("Beginning new upstream update ...");
+
+        for prefix in 0..=PasswordHashPrefix::MAX.0 {
+            let prefix = PasswordHashPrefix(prefix);
+
+            if prefix.0 % 1800 == 0 {
+                log::info!(
+                    "Upstream update: At prefix {} (currently {} local records estimated)",
+                    prefix.to_hex_string(),
+                    db.estimate_count().expect("estimate count")
+                );
+            }
+
+            if let Err(err) = upstream_update_range(db, &client, prefix).await {
+                log::error!("{} at {}", err, prefix.to_hex_string());
+            }
+
+            sleep(Duration::from_secs(2)).await;
+        }
+    }
 }
 
 async fn status(State(db): State<&'static Database>) -> String {
@@ -287,9 +361,8 @@ mod tests {
 012A7CA357541F0AC487871FEEC1891C49C:2
 0136E006E24E7D152139815FB0FC6A50B15:2";
 
-        let mut out = Vec::new();
-        parse_upstream_range(PasswordHashPrefix(0xabcde), body, &mut out)
-            .expect("parse upstream range");
+        let out =
+            parse_upstream_range(PasswordHashPrefix(0xabcde), body).expect("parse upstream range");
 
         assert_eq!(out.len(), 5);
         assert_eq!(
