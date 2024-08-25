@@ -102,6 +102,7 @@ impl Database {
 #[error("Invalid password hash: {0}")]
 struct InvalidPasswordHash(#[from] FromHexError);
 
+#[derive(Debug, Eq, PartialEq)]
 struct PasswordHash {
     bytes: [u8; 20],
 }
@@ -213,6 +214,33 @@ fn load(db: &Database, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+enum UpstreamError {
+    UnexpectedContent,
+}
+
+fn parse_upstream_range(
+    prefix: PasswordHashPrefix,
+    body: &str,
+    out: &mut Vec<(PasswordHash, u64)>,
+) -> Result<(), UpstreamError> {
+    for line in body.lines() {
+        let (suffix, n) = line
+            .split_once(':')
+            .ok_or(UpstreamError::UnexpectedContent)?;
+
+        let mut hex_hash = prefix.to_hex_string();
+        hex_hash.push_str(suffix);
+
+        let hash = hex_hash
+            .parse()
+            .map_err(|_| UpstreamError::UnexpectedContent)?;
+        let n: u64 = n.parse().map_err(|_| UpstreamError::UnexpectedContent)?;
+        out.push((hash, n));
+    }
+    Ok(())
+}
+
 async fn status(State(db): State<&'static Database>) -> String {
     let count = db.estimate_count().expect("estimate count");
     format!("pwned count={count}u")
@@ -249,5 +277,32 @@ mod tests {
         assert_eq!(PasswordHashPrefix(0xabcd).to_hex_string(), "0ABCD");
         assert_eq!(PasswordHashPrefix(0xabcde).to_hex_string(), "ABCDE");
         assert_eq!(PasswordHashPrefix::MAX.to_hex_string(), "FFFFF");
+    }
+
+    #[test]
+    fn test_parse_upstream_range() {
+        let body = "0018A45C4D1DEF81644B54AB7F969B88D65:1
+00D4F6E8FA6EECAD2A3AA415EEC418D38EC:2
+011053FD0102E94D6AE2F8B83D76FAF94F6:1
+012A7CA357541F0AC487871FEEC1891C49C:2
+0136E006E24E7D152139815FB0FC6A50B15:2";
+
+        let mut out = Vec::new();
+        parse_upstream_range(PasswordHashPrefix(0xabcde), body, &mut out)
+            .expect("parse upstream range");
+
+        assert_eq!(out.len(), 5);
+        assert_eq!(
+            out[0],
+            (
+                PasswordHash {
+                    bytes: [
+                        0xab, 0xcd, 0xe0, 0x01, 0x8A, 0x45, 0xC4, 0xD1, 0xDE, 0xF8, 0x16, 0x44,
+                        0xB5, 0x4A, 0xB7, 0xF9, 0x69, 0xB8, 0x8D, 0x65
+                    ]
+                },
+                1
+            )
+        );
     }
 }
