@@ -6,10 +6,16 @@ Webservice to query https://haveibeenpwned.com/ database dumps.
 Usage
 -----
 
+Download a database dump using [haveibeenpwned-downloader](https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader):
+
+```
+haveibeenpwned-downloader pwned-passwords-sha1-ordered-by-hash-v8 -p 64
+```
+
 Import a database dump:
 
 ```
-cargo run --release -- --source pwned-passwords-sha1-ordered-by-hash-v8.txt
+cargo run --release -- --source pwned-passwords-sha1-ordered-by-hash-v8.txt --compact
 ```
 
 For local testing, `test.txt` contains the single password `test`.
