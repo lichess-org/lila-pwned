@@ -116,6 +116,17 @@ impl FromStr for PasswordHash {
     }
 }
 
+struct PasswordHashPrefix(u32);
+
+impl PasswordHashPrefix {
+    const MAX: PasswordHashPrefix = PasswordHashPrefix(0xfffff);
+
+    fn to_hex_string(&self) -> String {
+        let s = hex::encode_upper(self.0.to_be_bytes());
+        s[3..].to_string()
+    }
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -223,4 +234,20 @@ async fn query(State(db): State<&'static Database>, Query(query): Query<Params>)
     Json(Response {
         n: db.get(query.sha1).expect("db get"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_password_hash_prefix() {
+        assert_eq!(PasswordHashPrefix(0).to_hex_string(), "00000");
+        assert_eq!(PasswordHashPrefix(1).to_hex_string(), "00001");
+        assert_eq!(PasswordHashPrefix(0xab).to_hex_string(), "000AB");
+        assert_eq!(PasswordHashPrefix(0xabc).to_hex_string(), "00ABC");
+        assert_eq!(PasswordHashPrefix(0xabcd).to_hex_string(), "0ABCD");
+        assert_eq!(PasswordHashPrefix(0xabcde).to_hex_string(), "ABCDE");
+        assert_eq!(PasswordHashPrefix::MAX.to_hex_string(), "FFFFF");
+    }
 }
