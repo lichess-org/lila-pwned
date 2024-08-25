@@ -6,15 +6,11 @@ Webservice to query https://haveibeenpwned.com/ database dumps.
 Usage
 -----
 
-Download a database dump using [haveibeenpwned-downloader](https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader):
+Download a database dump using [haveibeenpwned-downloader](https://github.com/HaveIBeenPwned/PwnedPasswordsDownloader)
+and import it:
 
 ```
 haveibeenpwned-downloader pwned-passwords-sha1-ordered-by-hash-v8 -p 64
-```
-
-Import a database dump:
-
-```
 cargo run --release -- --source pwned-passwords-sha1-ordered-by-hash-v8.txt --compact
 ```
 
@@ -23,8 +19,11 @@ For local testing, `test.txt` contains the single password `test`.
 Serve:
 
 ```
-cargo run --release -- --bind 127.0.0.1:1337
+cargo run --release -- --bind 127.0.0.1:1337 --upstream-update
 ```
+
+With the `--upstream-update` flag, entries are slowly but continuously updated
+from the upstream API (about 1 month for a full update cycle).
 
 HTTP API
 --------
