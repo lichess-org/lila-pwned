@@ -21,7 +21,7 @@ env_logger = "0.11"
 hex = "0.4"
 indicatif = "0.17"
 log = "0.4"
-reqwest = "0.12.7"
+reqwest = "0.12.8"
 rocksdb = { version = "0.22", features = ["lz4", "zstd", "jemalloc"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_with = "3"
